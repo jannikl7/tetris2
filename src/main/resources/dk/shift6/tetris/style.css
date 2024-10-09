@@ -1,0 +1,8 @@
+/* styles.css */
+.root {
+    -fx-background-color: lightblue; /* Set a solid background color */
+}
+
+.custom-pane {
+    -fx-background-color: linear-gradient(to bottom, #ffcc00, #ff6600); /* Set a gradient background */
+}
