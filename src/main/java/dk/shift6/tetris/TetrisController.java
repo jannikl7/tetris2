@@ -11,7 +11,6 @@ import javafx.scene.input.KeyEvent;
 import javafx.scene.layout.VBox;
 import javafx.scene.paint.Color;
 
-import java.util.ArrayList;
 import java.util.concurrent.ThreadLocalRandom;
 
 import static javafx.scene.paint.Color.BLUE;
@@ -24,11 +23,20 @@ public class TetrisController {
     private Button exitButton; // Reference to the exit button
     @FXML
     private VBox root;
+
     private enum RowStatus {
         NONE,
         FULL,
         READY_FOR_REMOVAL
     }
+
+    private enum RenderState {
+        MOVE_SHAPE,
+        CLEAR_FULL_ROWS,
+        DELETE_CLEARED_ROWS,
+        GAME_OVER
+    }
+    private RenderState renderState = RenderState.MOVE_SHAPE;
 
 
     private TetrisShape[][] board = new TetrisShape[20][10];
@@ -44,7 +52,6 @@ public class TetrisController {
 
     private KeyCode keyEvent;
     private boolean eventBlocked = false;
-    private boolean gameOver = false;
 
     TetrisShapeContext[] shapes = {new TetrisShapeContext(
             new boolean[][]{
@@ -107,7 +114,7 @@ public class TetrisController {
                 if (deltaTime >= 50_000_000) {
                     // Update game state (e.g., move the Tetris shape down)
 
-                    if(update(deltaSeconds)) // Use a delta time of 1 second (or whatever your update logic needs)
+                    if(renderState == RenderState.MOVE_SHAPE && update(deltaSeconds)) // Use a delta time of 1 second (or whatever your update logic needs)
                         lastUpdate = now;
 
                     // Render the game (draw player, background, etc.)
@@ -127,48 +134,51 @@ public class TetrisController {
 
     // Render the game (draw the player and other elements)
     private void render(GraphicsContext gc) {
-        // Clear the canvas
-        if(this.gameOver) {
+        if(renderState == RenderState.GAME_OVER) {
             gc.setFill(Color.color(0.7, 0.7, 0.7, 0.5));
             gc.fillRect(40, 180, 120, 40);
             gc.setFill(Color.DARKRED);
             gc.setFont(new javafx.scene.text.Font(20));  // Set font size
             gc.fillText("GAME OVER!", 50, 200);  // (text, x, y)
         } else {
-            gc.setFill(Color.web("#211f1e"));
-            gc.fillRect(0, 0, gameCanvas.getWidth(), gameCanvas.getHeight());
+            // Clear the canvas
+                gc.setFill(Color.web("#211f1e"));
+                gc.fillRect(0, 0, gameCanvas.getWidth(), gameCanvas.getHeight());
 
-            for (int boardRow = 0; boardRow < board.length; boardRow++) {
-                if(rowStatus[boardRow] == RowStatus.FULL) { //full row ready for clearing
-                    board[boardRow] = new TetrisShape[board[boardRow].length];
-                    rowStatus[boardRow] = RowStatus.READY_FOR_REMOVAL;
-                    //give points
-                } else if(rowStatus[boardRow] == RowStatus.READY_FOR_REMOVAL && activeShape.status == TetrisShape.Status.QUEUED) {
-                    //remove the row and add one at top
-                    //loop back from boardRow and shift to the right
-                    for(int i = boardRow; i > 0; i++) { //This might ruin if shape is partly in.
-                        board[i] = board[i-1];
-                    }
-                    //add clear row to the beginning
-                    board[0] = new TetrisShape[board[0].length];
-                }
-                rowStatus[boardRow] = RowStatus.FULL;
-                for (int shape = 0; shape < board[boardRow].length; shape++) {
-                    activeShape.status = TetrisShape.Status.MOVING;
-                    TetrisShape tShape = board[boardRow][shape];
-                    if (tShape != null) {
-                        if(tShape.status == TetrisShape.Status.COLLISION && boardRow == 0) this.gameOver = true;
-                        gc.setFill(tShape.color);
-                        gc.fillRect(shape * shapeWidth + 1, boardRow * shapeHeight + 1, shapeWidth - 1, shapeHeight - 1);
-                    } else {
+                for (int boardRow = 0; boardRow < board.length; boardRow++) {
+                    if (rowStatus[boardRow] == RowStatus.FULL) { //clear the row and mark it for removel in the next render
+                        board[boardRow] = new TetrisShape[board[boardRow].length];
+                        rowStatus[boardRow] = RowStatus.READY_FOR_REMOVAL;
+                    } else if(rowStatus[boardRow] == RowStatus.READY_FOR_REMOVAL && this.activeShape.status == TetrisShape.Status.COLLISION) {
+                        for (int i = boardRow; i > 0; i--) { //shift above rows down by 1
+                            board[i] = board[i - 1];
+                        }
+
+                        board[0] = new TetrisShape[board[0].length]; //add clear row to the beginning
                         rowStatus[boardRow] = RowStatus.NONE;
+                        this.renderState = RenderState.MOVE_SHAPE;
                     }
-                }
-            }
-            // Draw additional elements (background, score, etc.)
-        }
 
-    }
+                    if (rowStatus[boardRow] != RowStatus.READY_FOR_REMOVAL) rowStatus[boardRow] = RowStatus.FULL;
+
+                    boolean rowFull = true;
+                    rowStatus[boardRow] = RowStatus.FULL;
+                    for (int shape = 0; shape < board[boardRow].length; shape++) {
+                        TetrisShape tShape = board[boardRow][shape];
+                        if (tShape != null) {
+                            gc.setFill(tShape.color);
+                            gc.fillRect(shape * shapeWidth + 1, boardRow * shapeHeight + 1, shapeWidth - 1, shapeHeight - 1);
+                        } else {
+                            rowStatus[boardRow] = RowStatus.NONE;
+                            rowFull = false;
+                        }
+                    }
+                    if(rowFull && this.activeShape.status == TetrisShape.Status.COLLISION) renderState = RenderState.CLEAR_FULL_ROWS;
+                }
+                this.activeShape.locked = false;
+                // Draw additional elements (background, score, etc.)
+            }
+        }
 
     // Update the game state (e.g., move player)
     private boolean update(double deltaTime) {
@@ -176,23 +186,30 @@ public class TetrisController {
              switch(keyEvent) {
                  case RIGHT:
                      this.keyEvent = null;
-                     this.activeShape.moveShape(board, TetrisShape.Directions.RIGHT);
+                     try {this.activeShape.moveShape(TetrisShape.Directions.RIGHT);} catch(ShapeLockedException e){}
                      break;
                  case LEFT:
                      this.keyEvent = null;
-                     this.activeShape.moveShape(board, TetrisShape.Directions.LEFT);
+                     try {this.activeShape.moveShape(TetrisShape.Directions.LEFT);} catch(ShapeLockedException e){}
                      break;
+                /* case SPACE:
+                     this.keyEvent = null;
+                     this.activeShape.rotateShape();*/
              }
         }
-        if (deltaTime >= 0.3) {
-            TetrisShape.Status result = this.activeShape.moveShape(board, TetrisShape.Directions.DOWN);
-            if( result == TetrisShape.Status.COLLISION) { //at the end of the board or shape is blocking
+        if (deltaTime >= 0.1) {
+            if( this.activeShape.status == TetrisShape.Status.COLLISION) { //at the end of the board or shape is blocking
                 //instantiate new shape
-                this.activeShape = randomShape();
+                //this.activeShape = randomShape();
+                TetrisShapeContext context = shapes[0];
+                this.activeShape = new TetrisShape(context.shape, board, context.x, context.y, context.color);
+
                 this.eventBlocked = false;
-            } else if(result == TetrisShape.Status.GAME_OVER) {
-                this.gameOver = true;
+            } else if(this.activeShape.status == TetrisShape.Status.GAME_OVER) {
+                this.renderState = RenderState.GAME_OVER;
             }
+            try {this.activeShape.moveShape(TetrisShape.Directions.DOWN);} catch(ShapeLockedException e){}
+            this.activeShape.locked = true;
             return true;
         }
         return false;
