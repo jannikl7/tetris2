@@ -32,7 +32,7 @@ public class TetrisController {
         CLEAR_FULL_ROWS,
         DELETE_CLEARED_ROWS,
         GAME_OVER,
-        CHECK_ROWS;
+        CHECK_ROWS, DROP_SHAPE;
     }
     private RenderState renderState = RenderState.MOVE_SHAPE;
 
@@ -120,10 +120,10 @@ public class TetrisController {
                         endMeasurement = System.nanoTime();
                         Long elapsedTime = endMeasurement - startMeasurement;
                         //System.out.println("Elapsed time: " + elapsedTime);
-                    } else {
+                    } // else {
                         // Render the game (draw player, background, etc.)
                         render(gc);
-                    }
+                    //}
                     if(updated) {
                         if(renderState == RenderState.MOVE_SHAPE) {
                             try {
@@ -200,11 +200,18 @@ public class TetrisController {
                      this.keyEvent = null;
                      this.activeShape.rotateShape();
                      try {
-                         this.activeShape.moveShape(TetrisShape.Directions.ROTATE, true);
+                         if(this.activeShape != null) this.activeShape.moveShape(TetrisShape.Directions.ROTATE, true);
+                     } catch (ShapeLockedException e) {}
+                     break;
+                 case DOWN:
+                     this.keyEvent = null;
+                     try {
+                         this.renderState = RenderState.DROP_SHAPE;
+                         if(this.activeShape != null) this.activeShape.moveShape(TetrisShape.Directions.DOWN, false);
                      } catch (ShapeLockedException e) {}
              }
         }
-        if (deltaTime >= 0.1) {
+        if (deltaTime >= 0.5) {
             if(this.activeShape != null) activeShape.locked = true;
             RenderState nextState = null;
             for (int boardRow = 0; boardRow < board.rows.length; boardRow++) {

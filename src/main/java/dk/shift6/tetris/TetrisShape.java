@@ -81,7 +81,7 @@ class TetrisShape {
                     if (b.y < 0)
                         return this.status = Status.COLLISION_AND_NOT_BOARD;
                     else
-                        return direction == Directions.DOWN ? (this.status = Status.COLLISION) : (this.status = Status.MOVING);
+                        return direction == Directions.DOWN? (this.status = Status.COLLISION) : (this.status = Status.MOVING);
 
                 }
             }

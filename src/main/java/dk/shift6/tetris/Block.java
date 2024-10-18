@@ -47,7 +47,7 @@ public class Block {
     }
 
     void commitNewPoint() {
-        x = futureX;
+        x = futureX; //her var en nullpointer på futureX efter et spacebar input?
         y = futureY;
         futureX = futureY = null;
     }
