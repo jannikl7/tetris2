@@ -6,14 +6,12 @@ public class Block {
     int x, y;
     Integer futureX = null;
     Integer futureY = null;
-    TetrisShape[][] board;
     Block leftBlock, topBlock, rightBlock, bottomBlock;
     TetrisShape parentShape;
 
 
-    Block(TetrisShape parentShape, TetrisShape[][] board, int x, int y) {
+    Block(TetrisShape parentShape, int x, int y) {
         this.parentShape = parentShape;
-        this.board = board;
         this.x = x;
         this.y = y;
     }
@@ -31,10 +29,17 @@ public class Block {
         return collisionTestPoint(newX, newY);
     }
 
+    /**
+     * return true if there is a collision at the given point
+     * @param newX
+     * @param newY
+     * @return
+     */
     boolean collisionTestPoint(int newX, int newY) {
-        if(     (newX < 0 || newX >= board[0].length)
-                || newY > board.length -1
-                || (newY >= 0 && newX >= 0  && board[newY][newX] != null && board[newY][newX] != this.parentShape ))
+        if( (newX < 0 || newX >= this.parentShape.board.rows[0].blocks.length) ||
+            newY > this.parentShape.board.getRowSize() -1 ||
+            (newY >= 0 && newX >= 0  && this.parentShape.board.rows[newY].blocks[newX] != null &&
+             this.parentShape.board.rows[newY].blocks[newX].parentShape != this.parentShape))
             return true;
         futureX = newX;
         futureY = newY;
@@ -46,51 +51,6 @@ public class Block {
         y = futureY;
         futureX = futureY = null;
     }
-
-  /*  boolean collisionTestRight() {
-        System.out.println("moveRight");
-        //is shape already at edge or has a neighbour?
-        if (this.y >= 0 && (this.x + 1 == board[this.y].length || board[this.y][this.x + 1] != null))
-            return true;
-
-        return false;
-    }
-
-    boolean collisionTestLeft() {
-        //at the edge
-        if (this.y >= 0 && (this.x == 0 || board[this.y][this.x - 1] != null))
-            return true;
-
-        return false;
-    }
-
-    boolean collisionTestDown() {
-        if (this.y + 1 >= 0 && (this.y + 1 >= board.length || board[this.y + 1][this.x] != null)) {
-            return true;
-        }
-        return false;
-    }*/
-
-   /* boolean willCollide(TetrisShape.Directions direction) {
-        if (direction == TetrisShape.Directions.LEFT && this.leftBlock == null)
-            return collisionTestLeft();
-        else if (direction == TetrisShape.Directions.RIGHT && this.rightBlock == null)
-            return collisionTestRight();
-        else if (direction == TetrisShape.Directions.DOWN && this.bottomBlock == null)
-            return collisionTestDown();
-
-        return false; //we do not test the given direction
-    }*/
-
-    void move(TetrisShape.Directions direction) {
-        if (direction == TetrisShape.Directions.DOWN)
-            this.y++;
-        else if (direction == TetrisShape.Directions.LEFT)
-            this.x--;
-        else if (direction == TetrisShape.Directions.RIGHT)
-            this.x++;
-    }
-
 
     public void regretNewPoint() {
         futureY = futureX = null;
@@ -110,5 +70,14 @@ public class Block {
 
     public void setBottomBlock(Block bottomBlock) {
         this.bottomBlock = bottomBlock;
+    }
+
+    public void findNeighbours() {
+        for(Block b: this.parentShape.blocks) {
+            if(b.y == this.y-1 && b.x == this.x) this.setTopBlock(b);
+            if(b.y == this.y+1 && b.x == this.x) this.setBottomBlock(b);
+            if(b.x == this.x-1 && b.y == this.y) this.setLeftBlock(b);
+            if(b.x == this.x+1 && b.y == this.y) this.setRightBlock(b);
+        }
     }
 }

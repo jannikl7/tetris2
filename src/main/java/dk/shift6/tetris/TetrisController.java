@@ -11,6 +11,7 @@ import javafx.scene.input.KeyEvent;
 import javafx.scene.layout.VBox;
 import javafx.scene.paint.Color;
 
+import java.util.Random;
 import java.util.concurrent.ThreadLocalRandom;
 
 import static javafx.scene.paint.Color.BLUE;
@@ -24,23 +25,20 @@ public class TetrisController {
     @FXML
     private VBox root;
 
-    private enum RowStatus {
-        NONE,
-        FULL,
-        READY_FOR_REMOVAL
-    }
+
 
     private enum RenderState {
         MOVE_SHAPE,
         CLEAR_FULL_ROWS,
         DELETE_CLEARED_ROWS,
-        GAME_OVER
+        GAME_OVER,
+        CHECK_ROWS;
     }
     private RenderState renderState = RenderState.MOVE_SHAPE;
 
-
-    private TetrisShape[][] board = new TetrisShape[20][10];
-    private RowStatus[] rowStatus = new RowStatus[board.length];
+    private int rowCount = 20;
+    private int colCount = 10;
+    private Board board = new Board(rowCount,colCount);
 
     // Game variables
     private double shapeWidth = 20;
@@ -113,13 +111,32 @@ public class TetrisController {
                 // Check if at least one second (1_000_000_000 nanoseconds) has passed
                 if (deltaTime >= 50_000_000) {
                     // Update game state (e.g., move the Tetris shape down)
+                    boolean updated = false;
+                    long startMeasurement = System.nanoTime(), endMeasurement;
 
-                    if(renderState == RenderState.MOVE_SHAPE && update(deltaSeconds)) // Use a delta time of 1 second (or whatever your update logic needs)
+                    if(renderState != RenderState.GAME_OVER && (updated =  update(deltaSeconds))) {// Use a delta time of 1 second (or whatever your update logic needs)
                         lastUpdate = now;
-
-                    // Render the game (draw player, background, etc.)
-                    render(gc);
-
+                        render(gc);
+                        endMeasurement = System.nanoTime();
+                        Long elapsedTime = endMeasurement - startMeasurement;
+                        //System.out.println("Elapsed time: " + elapsedTime);
+                    } else {
+                        // Render the game (draw player, background, etc.)
+                        render(gc);
+                    }
+                    if(updated) {
+                        if(renderState == RenderState.MOVE_SHAPE) {
+                            try {
+                                TetrisShape.Status moveResult = activeShape.moveShape(TetrisShape.Directions.DOWN, null);
+                                if(moveResult == TetrisShape.Status.COLLISION) {
+                                    renderState = RenderState.CHECK_ROWS;
+                                    activeShape = null;
+                                } else if (moveResult == TetrisShape.Status.COLLISION_AND_NOT_BOARD)
+                                    renderState = RenderState.GAME_OVER;
+                            } catch (ShapeLockedException e) {
+                            }
+                        }
+                    }
                 }
             }
         };
@@ -142,40 +159,23 @@ public class TetrisController {
             gc.fillText("GAME OVER!", 50, 200);  // (text, x, y)
         } else {
             // Clear the canvas
-                gc.setFill(Color.web("#211f1e"));
-                gc.fillRect(0, 0, gameCanvas.getWidth(), gameCanvas.getHeight());
-
-                for (int boardRow = 0; boardRow < board.length; boardRow++) {
-                    if (rowStatus[boardRow] == RowStatus.FULL) { //clear the row and mark it for removel in the next render
-                        board[boardRow] = new TetrisShape[board[boardRow].length];
-                        rowStatus[boardRow] = RowStatus.READY_FOR_REMOVAL;
-                    } else if(rowStatus[boardRow] == RowStatus.READY_FOR_REMOVAL && this.activeShape.status == TetrisShape.Status.COLLISION) {
-                        for (int i = boardRow; i > 0; i--) { //shift above rows down by 1
-                            board[i] = board[i - 1];
-                        }
-
-                        board[0] = new TetrisShape[board[0].length]; //add clear row to the beginning
-                        rowStatus[boardRow] = RowStatus.NONE;
-                        this.renderState = RenderState.MOVE_SHAPE;
-                    }
-
-                    if (rowStatus[boardRow] != RowStatus.READY_FOR_REMOVAL) rowStatus[boardRow] = RowStatus.FULL;
-
+            gc.setFill(Color.web("#211f1e"));
+            gc.fillRect(0, 0, gameCanvas.getWidth(), gameCanvas.getHeight());
+            for (int boardRow = 0; boardRow < board.rows.length; boardRow++) {
+                Row currRow = board.rows[boardRow];
+                if(currRow.state == Row.RowState.READY_FOR_REMOVAL) continue;
                     boolean rowFull = true;
-                    rowStatus[boardRow] = RowStatus.FULL;
-                    for (int shape = 0; shape < board[boardRow].length; shape++) {
-                        TetrisShape tShape = board[boardRow][shape];
-                        if (tShape != null) {
-                            gc.setFill(tShape.color);
-                            gc.fillRect(shape * shapeWidth + 1, boardRow * shapeHeight + 1, shapeWidth - 1, shapeHeight - 1);
+                    for (int blockIdx = 0;blockIdx < currRow.getSize(); blockIdx++) {
+                        Block block = currRow.blocks[blockIdx];
+                        if (block != null) {
+                            gc.setFill(block.parentShape.color);
+                            gc.fillRect(blockIdx * shapeWidth + 1, boardRow * shapeHeight + 1, shapeWidth - 1, shapeHeight - 1);
                         } else {
-                            rowStatus[boardRow] = RowStatus.NONE;
                             rowFull = false;
                         }
                     }
-                    if(rowFull && this.activeShape.status == TetrisShape.Status.COLLISION) renderState = RenderState.CLEAR_FULL_ROWS;
+                    currRow.state = (rowFull) ? Row.RowState.FULL : Row.RowState.OPEN;
                 }
-                this.activeShape.locked = false;
                 // Draw additional elements (background, score, etc.)
             }
         }
@@ -186,30 +186,53 @@ public class TetrisController {
              switch(keyEvent) {
                  case RIGHT:
                      this.keyEvent = null;
-                     try {this.activeShape.moveShape(TetrisShape.Directions.RIGHT);} catch(ShapeLockedException e){}
+                     try {
+                         if(this.activeShape != null) this.activeShape.moveShape(TetrisShape.Directions.RIGHT, false);
+                     } catch(ShapeLockedException e){}
                      break;
                  case LEFT:
                      this.keyEvent = null;
-                     try {this.activeShape.moveShape(TetrisShape.Directions.LEFT);} catch(ShapeLockedException e){}
+                     try {
+                         if(this.activeShape != null) this.activeShape.moveShape(TetrisShape.Directions.LEFT, false);
+                     } catch(ShapeLockedException e){}
                      break;
-                /* case SPACE:
+                 case SPACE:
                      this.keyEvent = null;
-                     this.activeShape.rotateShape();*/
+                     this.activeShape.rotateShape();
+                     try {
+                         this.activeShape.moveShape(TetrisShape.Directions.ROTATE, true);
+                     } catch (ShapeLockedException e) {}
              }
         }
         if (deltaTime >= 0.1) {
-            if( this.activeShape.status == TetrisShape.Status.COLLISION) { //at the end of the board or shape is blocking
-                //instantiate new shape
-                //this.activeShape = randomShape();
-                TetrisShapeContext context = shapes[0];
-                this.activeShape = new TetrisShape(context.shape, board, context.x, context.y, context.color);
-
-                this.eventBlocked = false;
-            } else if(this.activeShape.status == TetrisShape.Status.GAME_OVER) {
-                this.renderState = RenderState.GAME_OVER;
+            if(this.activeShape != null) activeShape.locked = true;
+            RenderState nextState = null;
+            for (int boardRow = 0; boardRow < board.rows.length; boardRow++) {
+                Row currRow = board.rows[boardRow];
+                if(renderState == RenderState.CHECK_ROWS) {
+                    if (currRow.state == Row.RowState.FULL) { //clear the row and mark it for removal in the next render
+                        currRow.clear();
+                        currRow.state = Row.RowState.READY_FOR_REMOVAL;
+                        nextState = RenderState.DELETE_CLEARED_ROWS;
+                    }
+                } else if (currRow.state == Row.RowState.READY_FOR_REMOVAL && renderState == RenderState.DELETE_CLEARED_ROWS) {
+                    for (int i = boardRow; i > 0; i--) { //shift above rows down by 1
+                        board.moveRow(i - 1, i);
+                    }
+                    board.clearTopRow(); //add clear row to the beginning
+                    }
             }
-            try {this.activeShape.moveShape(TetrisShape.Directions.DOWN);} catch(ShapeLockedException e){}
-            this.activeShape.locked = true;
+            this.renderState = nextState == null ? RenderState.MOVE_SHAPE : nextState;
+
+            if( activeShape == null && renderState == RenderState.MOVE_SHAPE) {//at the end of the board or shape is blocking
+                //instantiate new shape
+                this.activeShape = randomShape();
+               // TetrisShapeContext context = shapes[0];
+               // this.activeShape = new TetrisShape(context.shape, board, context.x, context.y, randomColor());
+                this.eventBlocked = false;
+            }
+            if(this.activeShape != null) this.activeShape.locked = false;
+
             return true;
         }
         return false;
@@ -223,6 +246,19 @@ public class TetrisController {
     private TetrisShape randomShape() {
         TetrisShapeContext context = shapes[ThreadLocalRandom.current().nextInt(shapes.length)];
         return new TetrisShape(context.shape, board, context.x, context.y, context.color);
+    }
+
+    Color randomColor() {
+        Random random = new Random();
+
+        // Generate random values for red, green, and blue (between 0 and 1)
+        double red = random.nextDouble();
+        double green = random.nextDouble();
+        double blue = random.nextDouble();
+
+        // Create a random Color object
+        Color randomColor = new Color(red, green, blue, 1.0); // 1.0 is full opacity
+        return randomColor;
     }
 
 

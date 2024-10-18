@@ -3,20 +3,22 @@ package dk.shift6.tetris;
 import javafx.scene.paint.Color;
 
 import java.util.ArrayList;
+import java.util.Optional;
 
 class TetrisShape {
     public boolean[][] shape;
-    TetrisShape[][] board;
+    Board board;
     Block[] blocks;
     public Color color;
     public Status status;
     public boolean locked;
+    private int x, y;
 
     public enum Status {
         QUEUED,
         MOVING,
         COLLISION,
-        GAME_OVER
+        COLLISION_AND_NOT_BOARD,
     }
 
     enum Directions {
@@ -31,15 +33,17 @@ class TetrisShape {
      * @param x
      * @param y
      */
-    TetrisShape(boolean[][] inputShape, TetrisShape[][] board, int x, int y, Color color) {
+    TetrisShape(boolean[][] inputShape, Board board, int x, int y, Color color) {
         shape = inputShape;
+        this.x = x;
+        this.y = y;
         Block[][] blockShape = new Block[shape.length][shape[0].length];
         //initialize blocks
         ArrayList<Block> _blocks = new ArrayList<>();
         for (int i = 0; i < shape.length; i++) {
             for (int _x = 0; _x < shape[i].length; _x++) {
                 if (shape[i][_x]) {
-                    Block newBlock = new Block(this, board,_x + x, i - shape.length);
+                    Block newBlock = new Block(this,_x + x, i - shape.length);
                     if(_x > 0 && _blocks.size() > 0) {
                         Block leftBlock = _blocks.get(_blocks.size()-1);
                         if(leftBlock != null) {
@@ -67,51 +71,76 @@ class TetrisShape {
         this.board = board;
     }
 
-    public Status moveShape(Directions direction) throws ShapeLockedException {
+    public Status moveShape(Directions direction, Boolean collisionTestDone) throws ShapeLockedException {
         if(this.locked) throw new ShapeLockedException("This shape is locked");
-        for (Block b : this.blocks) {
-            if (b.collisionTest(direction)) {
-                return this.status = Status.COLLISION;
+
+        //test for collision which will set futureX/Y if no collision
+        if(collisionTestDone == null || !collisionTestDone) {
+            for (Block b : this.blocks) {
+                if (b.collisionTest(direction)) { //will break if collisionTest has already been done i.e. rotate
+                    if (b.y < 0)
+                        return this.status = Status.COLLISION_AND_NOT_BOARD;
+                    else
+                        return direction == Directions.DOWN ? (this.status = Status.COLLISION) : (this.status = Status.MOVING);
+
+                }
             }
         }
         //clear current placement
         for (Block b : this.blocks) {
-            if (b.y >= 0) board[b.y][b.x] = null;
+            if (b.y >= 0) board.rows[b.y].blocks[b.x] = null;
         }
 
         //add new placement
         for (Block b : this.blocks) {
             b.commitNewPoint();
-            if (b.y >= 0) board[b.y][b.x] = this;
+            if (b.y >= 0) board.rows[b.y].blocks[b.x] = b;
+            this.x = b.x < this.x ? b.x : this.x;
+            this.y = b.y > this.y ? b.y : this.y;
         }
 
-        return Status.MOVING;
+        if(direction == Directions.ROTATE) {
+            for(Block b: blocks) b.findNeighbours();
+        }
+
+        return this.status = Status.MOVING;
     }
 
     public void rotateShape() {
-        boolean rotationSucceeded = false;
-        int attempts = 0;
-        while(!rotationSucceeded || attempts == 3) {
-            attempts++;
-            Integer baseY = null, baseX = null;
-            for(int i = 0; i < this.blocks.length; i++) {
-                Block b = this.blocks[i];
-                //find new position
-                int newY = (baseX == null) ? baseX = b.x : baseX;
-                int newX = shape.length - 1 - (baseY == null ? baseY = b.y : baseY);
-                //if Block collides try next position
-                if (!b.collisionTestPoint(newX, newY))
-                    break;
-                else if(i == this.blocks.length - 1)
-                    rotationSucceeded = true;
+        if(this.shape.length > 0) this.rotateShape(this.shape);
+    }
+
+    public void rotateShape(boolean[][] baseShape) throws IllegalArgumentException {
+        if(baseShape.length == 0) throw new IllegalArgumentException("Length of parameter 'baseShape' must be larger than 0");
+        int rows = baseShape.length;
+        int cols = baseShape[0].length;
+
+        // Create a new matrix for the transposed result
+        boolean[][] transposedMatrix = new boolean[cols][rows];
+
+        // Transpose the matrix
+        boolean rotationSucceeded = true;
+        for (int i = 0, blockIdx = 0; i < rows; i++) {
+            for (int j = 0; j < cols; j++) {
+                transposedMatrix[j][rows-1-i] = this.shape[i][j]; //inserting and reversing the column in one go
+                if( transposedMatrix[j][rows-1-i] &&
+                    this.blocks[blockIdx++].collisionTestPoint(this.x+(rows - 1 - i), this.y-(cols-1-j))) {             //check new position on board, abort if occupied
+                    //mark occupied and move on to next rotation
+                    rotationSucceeded = false;
+                }
             }
         }
-
+        //if occupied move on to next rotation
         if(!rotationSucceeded) {
             for(Block b: this.blocks) {
                 b.regretNewPoint();
             }
+        } else {
+            this.shape = transposedMatrix;
         }
+
+        //if success move blocks. It shouldn't matter which block ends up where (do I assume somewhere that block 0 is the first block?
+
     }
 
 }
