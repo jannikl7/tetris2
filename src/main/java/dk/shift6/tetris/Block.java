@@ -38,7 +38,7 @@ public class Block {
     boolean collisionTestPoint(int newX, int newY) {
         if( (newX < 0 || newX >= this.parentShape.board.rows[0].blocks.length) ||
             newY > this.parentShape.board.getRowSize() -1 ||
-            (newY >= 0 && newX >= 0  && this.parentShape.board.rows[newY].blocks[newX] != null &&
+            (newY >= 0 && this.parentShape.board.rows[newY].blocks[newX] != null &&
              this.parentShape.board.rows[newY].blocks[newX].parentShape != this.parentShape))
             return true;
         futureX = newX;

@@ -6,8 +6,10 @@ import javafx.fxml.FXML;
 import javafx.scene.canvas.Canvas;
 import javafx.scene.canvas.GraphicsContext;
 import javafx.scene.control.Button;
+import javafx.scene.control.Label;
 import javafx.scene.input.KeyCode;
 import javafx.scene.input.KeyEvent;
+import javafx.scene.layout.GridPane;
 import javafx.scene.layout.VBox;
 import javafx.scene.paint.Color;
 
@@ -23,8 +25,10 @@ public class TetrisController {
     @FXML
     private Button exitButton; // Reference to the exit button
     @FXML
-    private VBox root;
-
+    private GridPane root;
+    @FXML
+    private Label scoreLabel;
+    private int score = 0;
 
 
     private enum RenderState {
@@ -33,6 +37,10 @@ public class TetrisController {
         DELETE_CLEARED_ROWS,
         GAME_OVER,
         CHECK_ROWS, DROP_SHAPE;
+    }
+
+    private enum ScoreEvents {
+        FULL_ROW,
     }
     private RenderState renderState = RenderState.MOVE_SHAPE;
 
@@ -164,19 +172,20 @@ public class TetrisController {
             for (int boardRow = 0; boardRow < board.rows.length; boardRow++) {
                 Row currRow = board.rows[boardRow];
                 if(currRow.state == Row.RowState.READY_FOR_REMOVAL) continue;
-                    boolean rowFull = true;
-                    for (int blockIdx = 0;blockIdx < currRow.getSize(); blockIdx++) {
-                        Block block = currRow.blocks[blockIdx];
-                        if (block != null) {
-                            gc.setFill(block.parentShape.color);
-                            gc.fillRect(blockIdx * shapeWidth + 1, boardRow * shapeHeight + 1, shapeWidth - 1, shapeHeight - 1);
-                        } else {
-                            rowFull = false;
-                        }
+                boolean rowFull = true;
+                for (int blockIdx = 0;blockIdx < currRow.getSize(); blockIdx++) {
+                    Block block = currRow.blocks[blockIdx];
+                    if (block != null) {
+                        gc.setFill(block.parentShape.color);
+                        gc.fillRect(blockIdx * shapeWidth + 1, boardRow * shapeHeight + 1, shapeWidth - 1, shapeHeight - 1);
+                    } else {
+                        rowFull = false;
                     }
+                }
                     currRow.state = (rowFull) ? Row.RowState.FULL : Row.RowState.OPEN;
                 }
                 // Draw additional elements (background, score, etc.)
+                this.scoreLabel.setText(Integer.toString(score));
             }
         }
 
@@ -221,6 +230,7 @@ public class TetrisController {
                         currRow.clear();
                         currRow.state = Row.RowState.READY_FOR_REMOVAL;
                         nextState = RenderState.DELETE_CLEARED_ROWS;
+                        this.updateScores(ScoreEvents.FULL_ROW);
                     }
                 } else if (currRow.state == Row.RowState.READY_FOR_REMOVAL && renderState == RenderState.DELETE_CLEARED_ROWS) {
                     for (int i = boardRow; i > 0; i--) { //shift above rows down by 1
@@ -266,6 +276,11 @@ public class TetrisController {
         // Create a random Color object
         Color randomColor = new Color(red, green, blue, 1.0); // 1.0 is full opacity
         return randomColor;
+    }
+
+    private void updateScores(ScoreEvents event) {
+        if(event == ScoreEvents.FULL_ROW)
+            this.score += 1000;
     }
 
 
